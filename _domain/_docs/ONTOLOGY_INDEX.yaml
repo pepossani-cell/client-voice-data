@@ -18,7 +18,7 @@ entities:
     status: "ACTIVE"
 
   - id: CLIENT_VOICE.ZENDESK_TICKETS_RAW
-    semantic_doc: null
+    semantic_doc: "_docs/reference/ZENDESK_TICKETS_RAW_SEMANTIC.md"
     agentic_doc: "../docs/reference/ZENDESK_TICKETS_RAW.md"
     domains: ["CLIENT_VOICE"]
     tier: 3
