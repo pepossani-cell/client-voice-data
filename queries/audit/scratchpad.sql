@@ -1,0 +1,46 @@
+-- Scratchpad da investigação: client-voice-data (global)
+--
+-- Regra de conduta:
+-- - Use este scratchpad para investigações rápidas (fora de EDA estruturada)
+-- - Para estudos estruturados, crie `eda/<estudo>/scratchpad.sql`
+-- - Este arquivo é transitório. Antes de commitar, migre o que estabilizar para:
+--   - `queries/audit/` (sanidade, invariantes, drift)
+--   - `queries/studies/` (análises reexecutáveis)
+--   - `docs/reference/` (semântica/contratos)
+--
+-- Convenção de blocos (runner):
+--   python -m src.cli.run_scratchpad_block \
+--     --scratchpad queries/audit/scratchpad.sql --block <NOME>
+--
+-- Formato:
+--   -- BEGIN_<NOME_DO_BLOCO>
+--   <SQL>
+--   -- END_<NOME_DO_BLOCO>
+--
+-- ========================================================================
+-- SCRATCHPAD VAZIO - Adicione blocos conforme necessário
+-- ========================================================================
+--
+-- Exemplo de uso futuro:
+--
+-- -- BEGIN_CHECK_TICKET_VOLUME_BY_MONTH
+-- SELECT 
+--   DATE_TRUNC('month', event_date) as month,
+--   COUNT(*) as ticket_count,
+--   COUNT(DISTINCT clinic_id) as clinic_count
+-- FROM CAPIM_DATA_DEV.POSSANI_SANDBOX.TICKET_ANALYSIS_V3
+-- WHERE event_date >= '2024-01-01'
+-- GROUP BY 1
+-- ORDER BY 1;
+-- -- END_CHECK_TICKET_VOLUME_BY_MONTH
+--
+-- -- BEGIN_SENTIMENT_DRIFT_ANALYSIS
+-- SELECT 
+--   DATE_TRUNC('month', event_date) as month,
+--   AVG(sentimento_score) as avg_sentiment,
+--   STDDEV(sentimento_score) as sentiment_stddev
+-- FROM CAPIM_DATA_DEV.POSSANI_SANDBOX.TICKET_ANALYSIS_V3
+-- WHERE event_date >= '2024-01-01'
+-- GROUP BY 1
+-- ORDER BY 1;
+-- -- END_SENTIMENT_DRIFT_ANALYSIS

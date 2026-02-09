@@ -1,0 +1,367 @@
+---
+# LOCAL COPY - Forked from capim-meta-ontology @ 2026-02-04
+# 
+# This rule was copied for project autonomy (multi-repo setup).
+# Teams can customize locally if needed.
+# 
+# Original: capim-meta-ontology/.cursor/rules/
+---
+# Workspace Hygiene Protocol
+
+## 🎯 PRIMARY PRINCIPLE: AVOID PROJECT BLOAT
+
+Keep the repository clean by preventing temporary files, debug artifacts, and experimental code from accumulating in version control.
+
+**Origin**: Derived from ontologia-saas patterns + bnpl-funil practices
+**Decision**: DECISIONS_IN_PROGRESS.md § 10.3 (2026-02-03)
+
+---
+
+## 1. When This Rule Applies
+
+**Auto-applied when**:
+- Creating or editing files in `queries/`, `eda/`, `scripts/`, `outputs/`
+- Working with SQL queries (scratchpad pattern)
+- Generating artifacts (CSVs, PNGs, temporary outputs)
+- Debugging or iterating on data analysis
+
+**Applies to projects**:
+- ✅ bnpl-funil (queries + eda)
+- ✅ ontologia-saas (queries + eda)
+- ✅ client-voice-data (queries, future eda)
+- ❌ client-voice (Streamlit app, different patterns)
+
+---
+
+## 2. The Scratchpad Protocol (SQL Queries)
+
+### What is Scratchpad?
+
+**Scratchpad files** (`scratchpad.sql`) are for **iterative Snowflake query development**.
+
+**Purpose**:
+- Explore data ad-hoc
+- Test hypotheses quickly
+- Iterate on query logic
+- Debug SQL before formalizing
+
+**NOT for**:
+- Production queries (those go in `queries/views/`)
+- Documented analysis (those go in `queries/studies/`)
+- Committed permanently (scratchpad is **transitório**)
+
+### Two Levels of Scratchpad
+
+#### **Level 1: Per-Study Scratchpad** (EDA-specific)
+
+**Location**: `eda/<estudo>/scratchpad.sql`
+
+**When to use**: When working on a structured EDA/study.
+
+**Example**:
+```
+eda/
+├── leads_study/
+│   └── scratchpad.sql  ← Use this for leads_study exploration
+└── tag_payfac_pos/
+    └── scratchpad.sql  ← Use this for tag/payfac exploration
+```
+
+#### **Level 2: Global Scratchpad** (Quick investigations)
+
+**Location**: `queries/audit/scratchpad.sql`
+
+**When to use**: For quick investigations NOT tied to a specific EDA.
+
+**Example use cases**:
+- "What's the null rate of column X?"
+- "Check if this ID collision exists"
+- "Quick drift check on entity Y"
+
+### Scratchpad Header (Mandatory)
+
+Every scratchpad.sql MUST start with a header documenting the pattern:
+
+```sql
+-- Scratchpad da investigação: <CONTEXT>
+--
+-- Regra de conduta:
+-- - Use este scratchpad para investigações iterativas
+-- - Este arquivo é transitório (não commitar lógica estável)
+-- - Antes de commitar, migre o que estabilizar para:
+--   - `queries/audit/` (sanidade, invariantes, drift)
+--   - `queries/studies/` (análises reexecutáveis)
+--   - `docs/reference/` (semântica/contratos)
+--
+-- Convenção de blocos (runner):
+--   python -m src.cli.run_scratchpad_block \
+--     --scratchpad <PATH> --block <NOME>
+--
+-- Formato:
+--   -- BEGIN_<NOME_DO_BLOCO>
+--   <SQL>
+--   -- END_<NOME_DO_BLOCO>
+```
+
+### Named Blocks (BEGIN_/END_)
+
+Organize scratchpad queries into **named blocks**:
+
+```sql
+-- BEGIN_CHECK_NULL_RATES
+SELECT 
+  COUNT(*) as total,
+  COUNT(clinic_id) as filled,
+  ROUND(100.0 * COUNT(clinic_id) / COUNT(*), 1) as fill_pct
+FROM my_table;
+-- END_CHECK_NULL_RATES
+
+-- BEGIN_DRIFT_ANALYSIS_V1
+SELECT 
+  DATE_TRUNC('month', created_at) as month,
+  COUNT(*) as volume
+FROM my_table
+GROUP BY 1
+ORDER BY 1;
+-- END_DRIFT_ANALYSIS_V1
+```
+
+**Execution**:
+```bash
+python -m src.cli.run_scratchpad_block \
+  --scratchpad queries/audit/scratchpad.sql \
+  --block CHECK_NULL_RATES
+```
+
+### Lifecycle: Scratchpad → Production
+
+```
+Ad-hoc exploration (scratchpad)
+  ↓
+Estabiliza (query funciona, é reproduzível)
+  ↓
+Decide migration target:
+  ├─→ queries/audit/        (data quality checks)
+  ├─→ queries/studies/      (analytical queries)
+  └─→ queries/views/        (consumption views)
+```
+
+**Before committing**: Scratchpad should be **empty or minimal** (only recent experiments).
+
+---
+
+## 3. Temporary Artifacts Protocol
+
+### Where Temporary Files Go
+
+**Option 1: Use `@temp` flag** (recommended):
+```bash
+python -m src.cli.run_scratchpad_block \
+  --scratchpad eda/study/scratchpad.sql \
+  --block MY_BLOCK \
+  --out-csv "@temp"  # Saves to system temp folder
+```
+
+**Option 2: Use `_scratch/` folder** (local temporary work):
+```
+project/
+├── _scratch/           ← Gitignored, for local experiments
+│   ├── debug.py
+│   ├── test_query.sql
+│   └── temp_output.csv
+```
+
+**Option 3: Use `outputs/` folder** (generated artifacts):
+```
+project/
+├── outputs/           ← Gitignored
+│   ├── audit_results/
+│   └── plots/
+```
+
+### What Goes in _scratch/
+
+- ✅ Debug scripts (quick Python tests)
+- ✅ Temporary CSVs (for inspection)
+- ✅ Experimental notebooks
+- ✅ Helper scripts for iteration
+- ✅ Failed attempts / dead-ends
+
+### What Does NOT Go in _scratch/
+
+- ❌ Production code (goes in `scripts/` or `src/`)
+- ❌ Documented queries (goes in `queries/`)
+- ❌ Published plots (goes in `eda/<estudo>/plots/` if needed)
+- ❌ Final analysis results (goes in `outputs/` or docs)
+
+---
+
+## 4. Gitignore Rules (Enforcement)
+
+### Standard .gitignore for Data Projects
+
+```gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporary workspace
+_scratch/
+
+# Generated outputs (transitório)
+outputs/
+eda/**/outputs/temp_*
+eda/**/*_temp.csv
+eda/**/*_debug.png
+
+# Query results (transitório)
+queries/**/_results.csv
+
+# BUT: Allow intentionally published artifacts
+!eda/**/plots/*.png
+!docs/**/*.png
+```
+
+### Published vs Temporary Artifacts
+
+**Temporary** (gitignored):
+- Debug outputs: `*_debug.png`, `*_temp.csv`
+- Intermediate results: `outputs/audit_results/`
+- Scratchpad execution results
+
+**Published** (committed):
+- Finalized plots: `eda/<estudo>/plots/*.png`
+- Documentation figures: `docs/**/*.png`
+- Reference datasets: `docs/reference/*.csv` (if small)
+
+**Rule**: Default is gitignore. Explicitly allow (`!pattern`) only when publishing.
+
+---
+
+## 5. Cleanup Protocol
+
+### Before Committing
+
+**Checklist**:
+- [ ] Scratchpad is cleaned (only recent experiments remain)
+- [ ] No temporary files in `_scratch/` being committed
+- [ ] `__pycache__/` folders are gitignored
+- [ ] Debug scripts removed or moved to `_scratch/`
+- [ ] Outputs in `outputs/` are gitignored
+- [ ] Published plots are intentional (in `!eda/**/plots/`)
+
+### End of Task Cleanup
+
+When finishing a task:
+```bash
+# Clean scratchpad (keep header only)
+# Move stable queries to queries/audit/ or queries/studies/
+
+# Clean _scratch/ folder
+rm -rf _scratch/*
+
+# Clean outputs (if not needed)
+rm -rf outputs/audit_results/*
+```
+
+### Session End Cleanup
+
+Part of `@session-end` skill:
+- Review scratchpad files (are they minimal?)
+- Check for uncommitted temporary artifacts
+- Document any queries that stabilized (migrate them)
+
+---
+
+## 6. Anti-Patterns
+
+❌ **Don't**:
+- Commit scratchpad.sql with 1000+ lines of old experiments
+- Leave `__pycache__/` folders in version control
+- Commit debug scripts like `test.py`, `debug_query.sql`
+- Commit CSVs with `_temp` or `_debug` in the name
+- Create helper scripts outside of `_scratch/` during iteration
+- Let `outputs/` folder accumulate uncommitted artifacts
+
+✅ **Do**:
+- Keep scratchpad clean (migrate stable queries)
+- Use `_scratch/` for all temporary work
+- Gitignore temporary artifacts by default
+- Explicitly allow (`!pattern`) only published artifacts
+- Cleanup `_scratch/` at end of task
+- Migrate stable analysis to `queries/studies/`
+
+---
+
+## 7. Integration with Other Rules
+
+**Enforced by**:
+- `.cursor/rules/snowflake_data.mdc` (Snowflake-first, scratchpad execution)
+- `.cursor/rules/workspace_hygiene.mdc` (this rule)
+
+**Related skills**:
+- `@session-end` (includes cleanup checklist)
+- `@investigate-entity` (mentions scratchpad for profiling)
+
+**Related docs** (project-specific):
+- `docs/how_to/WORKING_WITH_QUERIES.md` (query organization)
+- `docs/how_to/EDA_PLAYBOOK.md` (scratchpad usage in EDA)
+
+---
+
+## 8. Project-Specific Notes
+
+### bnpl-funil
+
+- Has `queries/audit/scratchpad.sql` (global)
+- No per-study scratchpads yet (can add when needed)
+- Uses `outputs/` for generated artifacts (gitignored)
+
+### ontologia-saas
+
+- Has `eda/<estudo>/scratchpad.sql` (per-study)
+- Has `queries/audit/scratchpad.sql` (global)
+- Uses `run_scratchpad_block` CLI extensively
+- **TODO**: Add .gitignore (currently missing!)
+
+### client-voice-data
+
+- Will have `queries/audit/scratchpad.sql` (prepared for future)
+- No EDA yet, but infrastructure is ready
+- Uses simpler query structure (3 SQL files currently)
+
+---
+
+## 9. Validation
+
+**Before merging PR**:
+- [ ] No `__pycache__/` folders in diff
+- [ ] No `_scratch/` files in diff
+- [ ] Scratchpad files are minimal (recent work only)
+- [ ] Outputs folder not growing uncommitted
+- [ ] Published plots are intentional and documented
+
+**Automated check** (future):
+```bash
+# Check for common violations
+git diff --cached --name-only | grep -E '(__pycache__|_scratch|_temp|_debug)'
+```
+
+---
+
+## References
+
+- **Pattern origin**: `ontologia-saas/docs/how_to/WORKING_WITH_QUERIES.md`
+- **EDA playbook**: `ontologia-saas/docs/how_to/EDA_PLAYBOOK.md`
+- **Related rule**: `.cursor/rules/snowflake_data.mdc` (scratchpad execution)
+- **Decision**: `_memory/DECISIONS_IN_PROGRESS.md` § 10.3
+

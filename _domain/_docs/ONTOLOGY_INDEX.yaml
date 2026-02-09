@@ -1,0 +1,25 @@
+# Ontology Index for CLIENT_VOICE domain
+# Maps logical IDs to documentation markdown files within this repo.
+# Paths are relative to the root_path defined in DOMAIN_REGISTRY.
+
+entities:
+  - id: CLIENT_VOICE.ZENDESK_TICKETS_ENHANCED
+    semantic_doc: "_docs/ontology/ZENDESK_TICKETS_ENHANCED_SEMANTIC.md"
+    agentic_doc: "_docs/ontology/ZENDESK_TICKETS_ENHANCED.md"
+    domains: ["CLIENT_VOICE"]
+    tier: 1
+    status: "ACTIVE"
+
+  - id: CLIENT_VOICE.SOURCE_ZENDESK_COMMENTS
+    semantic_doc: "_docs/ontology/SOURCE_ZENDESK_COMMENTS_SEMANTIC.md"
+    agentic_doc: "_docs/ontology/SOURCE_ZENDESK_COMMENTS.md"
+    domains: ["CLIENT_VOICE"]
+    tier: 2
+    status: "ACTIVE"
+
+  - id: CLIENT_VOICE.ZENDESK_TICKETS_RAW
+    semantic_doc: null
+    agentic_doc: "_docs/ontology/ZENDESK_TICKETS_RAW.md"
+    domains: ["CLIENT_VOICE"]
+    tier: 3
+    status: "ACTIVE"

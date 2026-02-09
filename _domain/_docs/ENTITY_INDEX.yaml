@@ -1,0 +1,219 @@
+# ENTITY_INDEX.yaml
+# Client Voice Domain Entity Registry
+# Reference: MEMORY_ARCHITECTURE_CONSTITUTION §DIRECTIVE:ONTOLOGY_FORMALIZATION
+# Last Updated: 2026-02-03
+
+domain_id: CLIENT_VOICE
+domain_name: "Customer Voice & Support Intelligence"
+
+entities:
+
+  # === PRIMARY ENTITIES (Owned Data) ===
+  
+  - name: ZENDESK_TICKETS
+    type: FACT
+    status: ACTIVE
+    tier: 1
+    description: "Master record of support tickets (B2B SaaS + B2C Fintech), bifurcated model requiring multi-attribute routing."
+    source:
+      table: "CAPIM_DATA_DEV.POSSANI_SANDBOX.ZENDESK_TICKETS_ENHANCED_V1"
+      refresh: "Real-time (Hevo sync)"
+    primary_key: zendesk_ticket_id
+    business_keys: [zendesk_ticket_id]
+    documentation:
+      semantic: "reference/ZENDESK_TICKETS_SEMANTIC.md"
+      agentic: "reference/ZENDESK_TICKETS.md"
+  
+  - name: ZENDESK_USERS
+    type: DIMENSION
+    status: ACTIVE
+    tier: 3
+    description: "Identity registry for Zendesk (end-users, agents, admins). Rosetta Stone for identity resolution."
+    source:
+      table: "CAPIM_DATA.SOURCE_STAGING.SOURCE_ZENDESK_USERS"
+      refresh: "Real-time (Hevo sync)"
+    primary_key: id (user_id)
+    business_keys: [user_email, user_id]
+    documentation:
+      semantic: "reference/ZENDESK_USERS_SEMANTIC.md"
+      agentic: "reference/ZENDESK_USERS.md"
+  
+  - name: ZENDESK_TICKETS_ENHANCED
+    type: FACT
+    status: ACTIVE
+    tier: 1
+    description: "Enhanced Zendesk tickets with improved clinic attribution (bypasses hashed email limitation)."
+    source:
+      table: "CAPIM_DATA_DEV.POSSANI_SANDBOX.ZENDESK_TICKETS_ENHANCED_V1"
+      refresh: "Real-time (Hevo sync)"
+    primary_key: zendesk_ticket_id
+    business_keys: [zendesk_ticket_id, clinic_id_enhanced]
+    documentation:
+      semantic: "reference/ZENDESK_TICKETS_ENHANCED_SEMANTIC.md"
+      agentic: "reference/ZENDESK_TICKETS_ENHANCED.md"
+  
+  - name: SOURCE_ZENDESK_COMMENTS
+    type: FACT
+    status: ACTIVE
+    tier: 2
+    description: "Raw message content of Zendesk ticket conversations (public and private comments)."
+    source:
+      table: "CAPIM_DATA.SOURCE_STAGING.SOURCE_ZENDESK_COMMENTS"
+      refresh: "Real-time (Hevo sync)"
+    primary_key: comment_id
+    business_keys: [comment_id, ticket_id]
+    documentation:
+      semantic: "reference/SOURCE_ZENDESK_COMMENTS_SEMANTIC.md"
+      agentic: "reference/SOURCE_ZENDESK_COMMENTS.md"
+  
+  - name: TICKET_ANALYSIS
+    type: FACT
+    status: ACTIVE
+    description: "Zendesk support tickets processed and classified by LLM."
+    source:
+      table: "CAPIM_DATA_DEV.POSSANI_SANDBOX.TICKET_ANALYSIS_V3"
+      refresh: "Continuous (n8n workflow)"
+    primary_key: ticket_id
+    business_keys: [ticket_id, clinic_id]
+    
+    columns:
+      - name: ticket_id
+        type: VARCHAR
+        nullable: false
+        description: "Unique ticket identifier from Zendesk"
+      
+      - name: clinic_id
+        type: NUMBER
+        nullable: true
+        description: "FK to CLINICS dimension (may be null for unknown clinics)"
+      
+      - name: event_date
+        type: TIMESTAMP
+        nullable: false
+        description: "When the ticket was created"
+      
+      - name: persona
+        type: VARCHAR
+        nullable: false
+        description: "Clínica, Paciente, Interno, Indefinido"
+      
+      - name: tipo_contato
+        type: VARCHAR
+        nullable: false
+        description: "Dúvida, Problema, Sugestão, Elogio, Cancelamento"
+      
+      - name: categoria
+        type: VARCHAR
+        nullable: false
+        description: "High-level category (LLM classified)"
+      
+      - name: subcategoria
+        type: VARCHAR
+        nullable: true
+        description: "Detailed subcategory (LLM classified)"
+      
+      - name: keywords
+        type: VARCHAR
+        nullable: true
+        description: "Comma-separated extracted keywords"
+      
+      - name: summary
+        type: TEXT
+        nullable: true
+        description: "LLM-generated summary of the ticket"
+      
+      - name: quote
+        type: TEXT
+        nullable: true
+        description: "Relevant quote from the original content"
+      
+      - name: sentimento_score
+        type: NUMBER
+        nullable: false
+        description: "Sentiment score 1-5 (1=negative, 5=positive)"
+      
+      - name: raw_content
+        type: TEXT
+        nullable: true
+        description: "Original ticket content (PII sensitive)"
+      
+      - name: model_version
+        type: VARCHAR
+        nullable: true
+        description: "LLM model version used for classification"
+      
+      - name: processed_at
+        type: TIMESTAMP
+        nullable: true
+        description: "When the ticket was processed by the pipeline"
+
+    relationships:
+      - target: SAAS.CLINICS
+        type: BELONGS_TO
+        join: "ON ticket.clinic_id = clinic.id"
+        cardinality: "N:1"
+
+  - name: PROCESSING_CONTROL
+    type: OPERATIONAL
+    status: ACTIVE
+    description: "ETL control table for tracking processed records."
+    source:
+      table: "CAPIM_DATA_DEV.POSSANI_SANDBOX.PROCESSING_CONTROL"
+      refresh: "On ETL run"
+    primary_key: record_id
+    
+    columns:
+      - name: record_id
+        type: VARCHAR
+        nullable: false
+        description: "Unique identifier for the processed record"
+      
+      - name: source
+        type: VARCHAR
+        nullable: false
+        description: "Data source (zendesk, hubspot, etc.)"
+      
+      - name: last_content_hash
+        type: VARCHAR
+        nullable: true
+        description: "Hash for deduplication"
+      
+      - name: processed_at
+        type: TIMESTAMP
+        nullable: true
+        description: "When last processed"
+      
+      - name: status
+        type: VARCHAR
+        nullable: false
+        description: "success, error, pending"
+      
+      - name: error_message
+        type: TEXT
+        nullable: true
+        description: "Error details if status=error"
+
+# === CROSS-DOMAIN VIEWS (Conceptual) ===
+
+views:
+
+  - name: CLINIC_SUPPORT_HEALTH
+    type: SYNTHETIC
+    status: DRAFT
+    description: "Aggregated support health metrics per clinic."
+    sources:
+      - TICKET_ANALYSIS
+      - SAAS.CLINICS
+    
+    logic: |
+      SELECT 
+        c.clinic_id,
+        c.clinic_name,
+        COUNT(t.ticket_id) AS ticket_count_90d,
+        AVG(t.sentimento_score) AS avg_sentiment,
+        STRING_AGG(DISTINCT t.categoria, ', ') AS top_categories
+      FROM CLINICS c
+      LEFT JOIN TICKET_ANALYSIS t 
+        ON c.clinic_id = t.clinic_id
+        AND t.event_date >= CURRENT_DATE() - 90
+      GROUP BY c.clinic_id, c.clinic_name

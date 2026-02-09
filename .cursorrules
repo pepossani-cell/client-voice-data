@@ -1,0 +1,213 @@
+# CLIENT_VOICE Data Rules
+
+> **EXTENDS**: `../capim-meta-ontology/.cursorrules` (global rules)  
+> **Domain**: CLIENT_VOICE (Voice of Customer data ontology)  
+> **Last Updated**: 2026-02-03
+
+---
+
+## 1. Domain Context
+
+You are working on the CLIENT_VOICE data domain, which manages Voice of Customer (VoC) data:
+- Zendesk support tickets
+- Customer sentiment analysis
+- LLM-enhanced classification
+
+**This project contains**: Data ontology, ETL scripts, queries
+**Separate project**: `client-voice-app/` contains the Streamlit UI
+
+---
+
+## 1b. Data Layers (CLIENT_VOICE-Specific Mapping)
+
+**⚠️ CRITICAL**: This project has TWO types of data. ALWAYS identify the layer before investigating.
+
+### Layer → Schema Mapping
+
+| Layer | Schemas | Owner | Trust |
+|:---|:---|:---|:---|
+| **SOURCE** | `CAPIM_DATA.SOURCE_STAGING.SOURCE_ZENDESK_*`<br>`CAPIM_DATA.CAPIM_ANALYTICS.ZENDESK_*` | Data Engineering | **VERIFY** — may have undocumented bugs |
+| **SANDBOX** | `CAPIM_DATA_DEV.POSSANI_SANDBOX.*` | This Project | **THIS_PROJECT_OWNS** — we control and document |
+
+### Behavioral Rules
+
+1. **When investigating SOURCE entities**:
+   - Zendesk raw tables (`SOURCE_ZENDESK_*`) are unprocessed
+   - `ZENDESK_TICKETS_RAW` has `clinic_id` (46% fill rate)
+   - `ZENDESK_TICKETS` does NOT have `clinic_id` directly
+   - Check LESSONS_LEARNED for known issues (hashed emails, droz_template divergence)
+
+2. **When investigating SANDBOX entities**:
+   - `TICKET_ANALYSIS_V3`: LLM-enhanced classification (this project's ETL)
+   - `ZENDESK_TICKETS_ENHANCED_V1`: Improved clinic attribution
+   - Check `scripts/` for ETL logic
+
+### Quick Reference
+
+```
+SOURCE (Data Eng owns, VERIFY):
+  - SOURCE_ZENDESK_TICKETS (raw, 430K)
+  - SOURCE_ZENDESK_COMMENTS (raw, 3.9M)
+  - SOURCE_ZENDESK_USERS (identity)
+  - ZENDESK_TICKETS_RAW (enriched, has clinic_id)
+  - ZENDESK_TICKETS (CX metrics)
+
+SANDBOX (This project owns):
+  - TICKET_ANALYSIS_V3 (LLM classification)
+  - ZENDESK_TICKETS_ENHANCED_V1 (improved attribution)
+  - PROCESSING_CONTROL (ETL state)
+```
+
+---
+
+## 2. Domain-Specific Skills
+
+This project has domain skills in `.cursor/skills/` (STRUCTURE_CREATED, not yet implemented):
+
+**Planned Skills**:
+- **@analyze-voc-sentiment** (P1): Analyze Voice of Customer sentiment trends and patterns
+- **@correlate-tickets-events** (P2): Correlate support tickets with SAAS/FINTECH events (cross-domain)
+- **@classify-support-issues** (P4): LLM-enhanced classification of support tickets
+
+**Core skills** (from `capim-meta-ontology`):
+- @session-start, @session-end, @debate, @curate-memory
+
+**Shared skills** (from `capim-meta-ontology`):
+- @investigate-entity, @clinic-health-check
+- @eda-workflow (planned)
+
+**Reference**: `.cursor/skills/README.md` for details
+
+---
+
+## 3. Entity Investigation & Documentation Protocol
+
+**⚠️ INHERITED FROM GLOBAL**: See `../capim-meta-ontology/.cursorrules` § "ENTITY INVESTIGATION & DOCUMENTATION PROTOCOL" for complete mandatory steps.
+
+**Quick checklist for CLIENT_VOICE domain**:
+
+1. **Before starting**:
+   - [ ] Run `@session-start` (loads governance)
+   - [ ] Read existing entity doc as template
+   - [ ] Identify layer: SOURCE (Zendesk) or SANDBOX?
+
+2. **Debate structure** (MANDATORY):
+   - [ ] Show plan to user: which files to create?
+   - [ ] Confirm: local only or cross-domain?
+   - [ ] Get approval before creating files
+
+3. **Document (Dual Protocol)**:
+   - [ ] Agentic: `_domain/_docs/reference/<ENTITY>.md`
+   - [ ] Semantic: `_domain/_docs/reference/<ENTITY>_SEMANTIC.md`
+
+4. **Register metadata**:
+   - [ ] `_domain/_docs/ENTITY_INDEX.yaml`
+   - [ ] `_domain/_docs/ENTITY_GRAPH.yaml`
+   - [ ] [If cross-domain] `capim-meta-ontology`
+
+5. **Debate & refine** (MANDATORY):
+   - [ ] Discuss ambiguities, business rules
+   - [ ] Refine semantic doc
+
+6. **Cleanup**:
+   - [ ] Delete temporary profiling queries
+   - [ ] No bloat
+
+**CLIENT_VOICE-specific investigation order**:
+
+1. `_domain/_docs/reference/<ENTITY>_SEMANTIC.md` (if exists) — Semantic documentation
+2. `queries/zendesk/<entity>*.sql` — Canonical queries
+3. Snowflake profiling via `@investigate-entity` skill
+
+---
+
+## 3. Data Pipeline & ETL
+
+### Zendesk ETL
+
+- **Source**: Zendesk API
+- **Pipeline**: n8n workflow (ID: `eQEByyVKRHtD4uBa`)
+- **Processing**: LLM classification (category, subcategory, sentiment)
+- **Destination**: `CAPIM_DATA_DEV.POSSANI_SANDBOX.TICKET_ANALYSIS_V3`
+
+### Sync Script
+
+```bash
+python scripts/sync_zendesk_enhanced_view.py
+```
+
+---
+
+## 4. Business Rules
+
+### Ticket Classification
+
+- **Categories**: Must be populated after processing (AX-CV-001)
+- **Sentiment**: Must be 1-5 scale (AX-CV-002)
+- **Personas**: B2B (Clinics) vs B2C (Patients)
+
+### Enrichment Logic
+
+Join with other domains:
+- `clinic_id` → SAAS.CLINICS (metadata)
+- `clinic_id` → FINTECH.CLINICS (BNPL eligibility)
+
+---
+
+## 5. SQL Conventions
+
+### Table References
+
+Always use fully qualified names:
+
+```sql
+-- Good
+SELECT * FROM CAPIM_DATA_DEV.POSSANI_SANDBOX.TICKET_ANALYSIS_V3
+
+-- Bad (won't work in pandas.read_sql)
+USE DATABASE CAPIM_DATA_DEV;
+SELECT * FROM TICKET_ANALYSIS_V3;
+```
+
+### Temporal Queries
+
+Zendesk timestamps are in UTC. Normalize when needed:
+
+```sql
+CONVERT_TIMEZONE('UTC', 'America/Sao_Paulo', created_at) as created_at_brt
+```
+
+---
+
+## 6. Axioms (Local Constraints)
+
+Defined in `_domain/START_HERE.md`:
+
+- **AX-CV-001**: Every processed ticket has category + subcategory
+- **AX-CV-002**: Sentiment score in [1, 2, 3, 4, 5]
+
+Validate with: `@validate-axioms` skill
+
+---
+
+## 7. File Hygiene
+
+- **Queries**: Keep in `queries/zendesk/`
+- **Scripts**: ETL/sync scripts in `scripts/`
+- **Docs**: Semantic docs in `_domain/_docs/reference/`
+- **No CSV commits**: Ticket samples are for dev only
+
+---
+
+## 8. Integration with Application
+
+**Consumer**: `client-voice-app/` (separate Streamlit project)
+
+**Interface**: Queries in this project's `queries/` are consumed by app's `data/tickets.py`
+
+**NO duplication**: Application should NOT duplicate queries, must reference this project's canonical queries.
+
+---
+
+**See global rules**: `../capim-meta-ontology/.cursorrules`  
+**See skills**: `../capim-meta-ontology/.cursor/skills/README.md`

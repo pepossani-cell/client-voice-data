@@ -1,0 +1,172 @@
+---
+# LOCAL COPY - Forked from capim-meta-ontology @ 2026-02-04
+# 
+# This rule was copied for project autonomy (multi-repo setup).
+# Teams can customize locally if needed.
+# 
+# Original: capim-meta-ontology/.cursor/rules/
+---
+---
+description: Snowflake-first protocol for data investigation and SQL generation
+globs: ["**/*.sql", "**/*.py", "queries/**/*", "scripts/**/*.py"]
+---
+
+# Snowflake & Data Engineering Protocol
+
+## 🎯 PRIMARY PRINCIPLE: SNOWFLAKE-FIRST
+
+**Validate hypotheses WHERE THE DATA LIVES** (Snowflake), not in Python reimplementations.
+
+Execute queries directly in Snowflake to verify assumptions before documenting or building logic.
+
+## 1. Connection Protocol
+
+**NEVER** invent custom connection logic using `snowflake.connector` directly.
+
+**ALWAYS** import the shared utility:
+
+```python
+import sys
+# Adjust path to root if needed (from capim-meta-ontology workspace)
+sys.path.append(r'c:\Users\pedro.possani_capim\capim-meta-ontology\src')
+from utils.snowflake_connection import run_query
+
+# Usage
+df = run_query("SELECT * FROM TABLE LIMIT 10")
+```
+
+**For other workspaces** (e.g., bnpl-funil, ontologia-saas):
+```python
+# Adjust path to their own utils
+from src.utils.snowflake_connection import run_query
+```
+
+## 2. Zero Assumptions Protocol (NO_DOC_WITHOUT_DATA)
+
+**CRITICAL**: Do NOT assume a column exists just because it "makes sense".
+
+**Before documenting any entity**:
+
+1. **Profile first**: Run discovery query to see actual schema
+   ```python
+   df = run_query("SELECT * FROM TARGET_TABLE LIMIT 1")
+   print(df.columns)
+   ```
+
+2. **Check nullability**: Understand missing data patterns
+   ```sql
+   SELECT 
+     COUNT(*) as total_rows,
+     COUNT(column_name) as non_null,
+     COUNT(*) - COUNT(column_name) as null_count
+   FROM TABLE
+   ```
+
+3. **Verify grain**: Identify true primary key
+   ```sql
+   SELECT column_name, COUNT(*) as duplicates
+   FROM TABLE
+   GROUP BY column_name
+   HAVING COUNT(*) > 1
+   ```
+
+4. **Check domains**: For categorical columns, see actual values
+   ```sql
+   SELECT column_name, COUNT(*) as frequency
+   FROM TABLE
+   GROUP BY column_name
+   ORDER BY frequency DESC
+   LIMIT 20
+   ```
+
+**Reference verified schemas** in:
+- `ONTOLOGY_INDEX_*.yaml` (for canonical table paths)
+- `_domain/_docs/` (for entity documentation)
+
+## 3. Query Best Practices
+
+### Exploratory Queries
+- Always use `LIMIT` for exploratory work
+- Start with `LIMIT 10`, then increase if needed
+- Use `SAMPLE` for large tables: `FROM TABLE SAMPLE (1000 ROWS)`
+
+### Production Views
+- Use **explicit column names** (avoid `SELECT *` in DDLs)
+- Add **comments** for complex logic
+- Use **CTEs** for readability over nested subqueries
+
+Example:
+```sql
+-- Good
+CREATE VIEW my_view AS
+WITH base AS (
+  SELECT 
+    id,
+    name,
+    created_at,
+    -- Normalize to BRT
+    CONVERT_TIMEZONE('UTC', 'America/Sao_Paulo', created_at) as created_at_brt
+  FROM source_table
+)
+SELECT * FROM base WHERE created_at_brt >= '2024-01-01';
+```
+
+### Temporal Queries
+- **Always specify timezone** when dealing with timestamps
+- Use `CONVERT_TIMEZONE()` to normalize to BRT if needed
+- Document timezone assumptions in comments
+
+### Performance
+- Filter early in CTEs (push down predicates)
+- Use `QUALIFY` for window function filters
+- Avoid `DISTINCT` when possible (investigate duplicates instead)
+
+## 4. Windows/PowerShell Considerations
+
+- **Avoid `python -c`** with long scripts (escaping issues)
+- Use **script files** or the `run_scratchpad_block` runner:
+  ```powershell
+  python -m src.cli.run_scratchpad_block --scratchpad queries/audit/scratchpad.sql --block BLOCK_NAME
+  ```
+  **See**: `.cursor/rules/workspace_hygiene.mdc` for full scratchpad protocol (naming, lifecycle, cleanup)
+
+- **Chain commands** with `;` not `&&`:
+  ```powershell
+  cd directory ; python script.py
+  ```
+
+## 5. Investigation Workflow
+
+When investigating a new entity:
+
+1. **Use `@investigate-entity` skill** (if available)
+2. **Or follow manual protocol**:
+   - Profile schema and grain
+   - Check nullability and domains
+   - Analyze temporal drift (monthly volume)
+   - Document findings in `_domain/_docs/`
+3. **Debate semantics** before documenting (don't guess meanings)
+
+## 6. Integration with Skills
+
+This protocol is enforced by:
+- `@investigate-entity` skill (automated profiling)
+- `@validate-axioms` skill (data integrity checks)
+- `@clinic-health-check` skill (cross-domain queries)
+
+## 7. Anti-Patterns
+
+❌ **Don't**:
+- Assume columns exist without checking
+- Document entities without seeing actual data
+- Use `SELECT *` in production views
+- Ignore null patterns
+- Run unbounded queries on large tables
+
+✅ **Do**:
+- Profile before documenting
+- Use LIMIT/SAMPLE for exploration
+- Explicit columns in DDLs
+- Document timezone assumptions
+- Validate hypotheses in Snowflake first
+

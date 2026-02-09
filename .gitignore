@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Snowflake credentials
+.env
+
+# Data files (no CSV commits - default block all)
+*.csv
+*.xlsx
+*.parquet
+
+# Temporary workspace (future-proof for scratchpad work)
+_scratch/
+
+# Generated outputs (transitório)
+outputs/
+queries/**/_results.csv
+
+# Temporary EDA artifacts (when EDA is added in future)
+eda/**/outputs/temp_*
+eda/**/*_temp.csv
+eda/**/*_debug.png
+
+# BUT: Allow intentionally published artifacts (explicit opt-in)
+# Uncomment when needed:
+# !eda/**/plots/*.png
+# !docs/**/*.png
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
