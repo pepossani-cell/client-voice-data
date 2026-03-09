@@ -16,6 +16,21 @@ ENV/
 *.xlsx
 *.parquet
 
+# Intermediate data — checkpoints, phase results, reprocessed outputs
+# These are ephemeral artifacts from LLM processing runs.
+# Golden sets and canonical vocabs are excluded (kept intentionally).
+data/reprocessed/
+data/phase1/
+data/phase2/
+data/validation/
+data/calibration/
+data/*.jsonl
+data/crash_log.txt
+
+# Archive folders (local-only, not tracked)
+**/_archive/
+scripts/archive/
+
 # Temporary workspace (future-proof for scratchpad work)
 _scratch/
 

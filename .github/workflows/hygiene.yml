@@ -1,0 +1,30 @@
+name: hygiene
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run hygiene checks
+        env:
+          SCRATCHPAD_LINE_LIMIT: "800"
+        run: |
+          BASE_REF="origin/${{ github.base_ref }}"
+          if [ "${{ github.base_ref }}" = "" ]; then
+            BASE_REF="origin/main"
+          fi
+          python scripts/hygiene/git_hook.py ci --base "$BASE_REF"
+
