@@ -1,15 +1,27 @@
 """
-Snowflake Connection Utility for Capim Meta-Ontology
+Snowflake Connection Utility for Client-Voice-Data
 Provides connection and query execution functions.
+
+Forked from: capim-meta-ontology/src/utils/snowflake_connection.py @ 2026-02-12
+Reason: Project emancipation — remove hard dependency on meta-ontology filesystem.
 """
 
 import os
+from pathlib import Path
+
 import snowflake.connector
 import pandas as pd
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# Look for .env in project root first, then fall back to parent dirs
+_project_root = Path(__file__).parent.parent.parent
+_env_path = _project_root / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
+else:
+    # Fallback: try to find .env in parent directories (backwards compatibility)
+    load_dotenv()
 
 
 def get_snowflake_connection():
@@ -40,7 +52,7 @@ def get_snowflake_connection():
             **required_credentials,
             **{k: v for k, v in optional_credentials.items() if v is not None}
         }
-        
+
         conn = snowflake.connector.connect(**connect_args)
         print("Snowflake connection established successfully!")
         return conn
@@ -52,10 +64,10 @@ def get_snowflake_connection():
 def run_query(query: str) -> pd.DataFrame:
     """
     Executes a SQL query on Snowflake and returns results as a Pandas DataFrame.
-    
+
     Args:
         query: SQL query string
-        
+
     Returns:
         DataFrame with results, or None if error
     """
@@ -73,37 +85,6 @@ def run_query(query: str) -> pd.DataFrame:
         finally:
             conn.close()
     return None
-
-
-def validate_axiom(axiom_id: str, validation_query: str) -> dict:
-    """
-    Runs an axiom validation query and returns the result.
-    
-    Args:
-        axiom_id: The ID of the axiom being validated
-        validation_query: SQL query that should return 0 for PASS
-        
-    Returns:
-        dict with {axiom_id, status, count, message}
-    """
-    result = run_query(validation_query)
-    if result is None:
-        return {
-            "axiom_id": axiom_id,
-            "status": "ERROR",
-            "count": -1,
-            "message": "Failed to execute query"
-        }
-    
-    count = result.iloc[0, 0] if len(result) > 0 else 0
-    status = "PASS" if count == 0 else "FAIL"
-    
-    return {
-        "axiom_id": axiom_id,
-        "status": status,
-        "count": int(count),
-        "message": f"Found {count} violations" if count > 0 else "No violations"
-    }
 
 
 if __name__ == "__main__":
