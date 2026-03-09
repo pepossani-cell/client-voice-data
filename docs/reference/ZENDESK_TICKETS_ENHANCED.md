@@ -3,7 +3,7 @@
 > **Domain**: CLIENT_VOICE
 > **Related Reference**: [ZENDESK_TICKETS_ENHANCED_SEMANTIC.md](../../_domain/_docs/reference/ZENDESK_TICKETS_ENHANCED_SEMANTIC.md)
 > **Status**: Active (Workaround)
-> **Last Updated**: 2026-02-02
+> **Last Updated**: 2026-02-13 (v6 - added full_conversation)
 
 ---
 
@@ -33,6 +33,7 @@ This view extends `ZENDESK_TICKETS_RAW` by joining with `RESTRICTED.USERS_SENSIT
 | CLINIC_ID_ENHANCED | NUMBER | Yes | Consolidated Clinic ID (Best available) |
 | CLINIC_ID_SOURCE | TEXT | No | Source of the ID: 'org', 'restricted', 'none' |
 | TICKET_DOMAIN_HEURISTIC | TEXT | No | Final Class: 'B2C_FINANCE', 'B2B_SUPPORT', 'B2B_POS', 'AGENT_CLAUDINHA', 'ROUTER_NEEDED' |
+| FULL_CONVERSATION | TEXT | Yes | Aggregated conversation: DESCRIPTION + first 5 COMMENTS (max 7K chars) |
 
 ---
 
@@ -40,10 +41,11 @@ This view extends `ZENDESK_TICKETS_RAW` by joining with `RESTRICTED.USERS_SENSIT
 
 | Metric | Value | As Of |
 |:---|:---|:---|
-| Row Count | 430,815 | 2026-02-02 |
-| Distinct Tickets | 430,815 | 2026-02-02 |
-| Distinct Clinics | 12,084 | 2026-02-02 |
-| Date Range | 2022-02-04 to 2026-02-02 | |
+| Row Count | 436,320 | 2026-02-13 |
+| Distinct Tickets | 436,320 | 2026-02-13 |
+| Distinct Clinics (enhanced) | 11,948 | 2026-02-13 |
+| Fill Rate (clinic_id) | 46.8% | 2026-02-13 |
+| Date Range | 2022-02-04 to 2026-02-13 | |
 
 ---
 
@@ -53,20 +55,20 @@ This view extends `ZENDESK_TICKETS_RAW` by joining with `RESTRICTED.USERS_SENSIT
 
 | Column | % Null | Notes |
 |:---|:---:|:---|
-| CLINIC_ID (Original) | 53.6% | Fill rate ~46.4% |
-| CLINIC_ID_ENHANCED | 49.7% | **Improved Fill rate ~50.3%** (+3.9pp) |
-| CLINIC_ID_FROM_RESTRICTED | 86.7% | New source discovered via PII table |
+| CLINIC_ID_ENHANCED | 53.2% | Fill rate ~46.8% (v5 — corrected IDs) |
 
 ### Categorical Distributions
 
-**Column: `CLINIC_ID_SOURCE`**
+**Column: `CLINIC_ID_SOURCE`** (v5, 2026-02-13)
 
-| Value | Count | % |
-|:---|:---|:---|
-| none | 213,951 | 49.7% |
-| org | 162,858 | 37.8% |
-| requests | 36,891 | 8.6% |
-| restricted | 17,115 | 4.0% |
+| Value | Count | % | Description |
+|:---|:---|:---|:---|
+| none | 232,117 | 53.2% | No clinic attribution possible |
+| org | 165,729 | 38.0% | From org EXTERNAL_ID (Capim clinic_id) |
+| requests | 36,891 | 8.5% | From dbt enrichment (end_user_external_id etc.) |
+| restricted | 1,583 | 0.4% | From PII table (email match, last resort) |
+
+**CRITICAL FIX (v5, 2026-02-13)**: Prior versions used Zendesk `organization_id` (~10^13) as clinic_id — completely wrong. Now uses `SOURCE_ZENDESK_ORGANIZATIONS.EXTERNAL_ID` (correct Capim clinic_id, range 1–49K). Cross-validated: 202,620 matches with `ZENDESK_TICKETS_RAW.CLINIC_ID`, 0 mismatches.
 
 **Column: `STATUS`**
 
@@ -81,14 +83,15 @@ This view extends `ZENDESK_TICKETS_RAW` by joining with `RESTRICTED.USERS_SENSIT
 
 ## 4. Temporal Drift
 
-The volume shows a steady growth from ~9k tickets/month in early 2024 to ~15k in mid-2025.
+The volume shows growth from ~9k tickets/month in early 2024 to ~15k in mid-2025, then stabilizing.
 
-| Month | Volume |
-|:---|:---:|
-| 2026-01 | 12,075 |
-| 2025-12 | 10,113 |
-| 2025-11 | 13,792 |
-| 2025-10 | 14,462 |
+| Month | Volume | Notes |
+|:---|:---:|:---|
+| 2026-02 | ~5K+ | Month in progress |
+| 2026-01 | 12,075 | |
+| 2025-12 | 10,113 | |
+| 2025-11 | 13,792 | |
+| 2025-10 | 14,462 | |
 
 ---
 
@@ -96,7 +99,9 @@ The volume shows a steady growth from ~9k tickets/month in early 2024 to ~15k in
 
 | Target Entity | FK Column | Cardinality | Notes |
 |:---|:---|:---:|:---|
-| CLINICS | clinic_id_enhanced | N:1 | Linked to Clinic Master |
+| CLINICS (via SAAS) | clinic_id_enhanced | N:1 | Linked to Clinic Master (~46.8% fill) |
+| SOURCE_ZENDESK_ORGANIZATIONS | organization_id | N:1 | Org external_id = clinic_id |
+| ZENDESK_TICKETS_RAW | zendesk_ticket_id | 1:1 | dbt-enriched version |
 | ZENDESK_COMMENTS | zendesk_ticket_id | 1:N | ~9 comments per ticket |
 
 ---
@@ -116,3 +121,15 @@ The volume shows a steady growth from ~9k tickets/month in early 2024 to ~15k in
 - **Workaround Status**: This view is a temporary fix for the hashed email issue in `source_dash_users`.
 - **Traceability Upgrade (2026-02-03)**: Added `VIA_CHANNEL`, `IS_MESSAGING`, `ASSIGNEE_NAME`, `ASSIGNEE_EMAIL`, and `IS_CLAUDINHA_ASSIGNED` (ID: 19753766791956).
 - **Semantic Routing**: Adopted `B2C_FINANCE`, `B2B_SUPPORT`, `B2B_POS` taxonomy based on empirical investigation.
+- **CRITICAL BUG FIX v5 (2026-02-13)**: `clinic_id_enhanced` was returning Zendesk `organization_id` (internal ID ~10^13) instead of Capim `clinic_id` (1–49K). Fixed by joining with `SOURCE_ZENDESK_ORGANIZATIONS.EXTERNAL_ID`. Also added `ZENDESK_TICKETS_RAW.CLINIC_ID` (dbt enrichment) as fallback source.
+- **FULL_CONVERSATION v6 (2026-02-13)**: Added aggregated conversation field that mirrors the PostgreSQL `vox_popular.ticket_insights` logic. Includes DESCRIPTION + first 5 COMMENTS (truncated to 7K chars). This enables LLM semantic analysis directly in Snowflake without needing PostgreSQL access.
+
+## Changelog
+
+| Version | Date | Changes |
+|:---|:---|:---|
+| v6 | 2026-02-13 | Added `full_conversation` field (DESCRIPTION + first 5 COMMENTS, max 7K chars) |
+| v5 | 2026-02-13 | **CRITICAL**: Fixed clinic_id_enhanced (was org_id), added dbt fallback, 3-source enrichment |
+| v4 | 2026-02-10 | Script updated (never deployed) to use org_external_id |
+| v3 | 2026-02-03 | Added assignee details, bot identification, semantic routing |
+| v1 | 2026-02-02 | Initial view with org + restricted enrichment |
