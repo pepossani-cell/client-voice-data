@@ -1,7 +1,7 @@
 # ENTITY_INDEX.yaml
 # Client Voice Domain Entity Registry
 # Reference: MEMORY_ARCHITECTURE_CONSTITUTION §DIRECTIVE:ONTOLOGY_FORMALIZATION
-# Last Updated: 2026-02-03
+# Last Updated: 2026-02-13
 
 domain_id: CLIENT_VOICE
 domain_name: "Customer Voice & Support Intelligence"
@@ -192,6 +192,67 @@ entities:
         type: TEXT
         nullable: true
         description: "Error details if status=error"
+
+  - name: TICKET_INSIGHTS
+    type: FACT
+    status: ACTIVE
+    tier: 1
+    layer: SANDBOX
+    ownership: THIS_PROJECT
+    trust_level: THIS_PROJECT_OWNS
+    description: "Consolidated, enriched operational table for VoC analytics. Zendesk tickets with 3-axis taxonomy (Produto × Natureza × Atendimento), LLM semantic extraction (sentiment, themes, CES, churn risk), clinic attribution, and full conversation context."
+    source:
+      database: PostgreSQL (vox_popular)
+      table: "ticket_insights"
+      refresh: "On-demand backfill (scripts/backfill_tickets_mvp.py) + LLM reprocessing (scripts/reprocess_tickets_full_taxonomy.py)"
+    upstream_dependencies:
+      - "CAPIM_DATA.SOURCE_STAGING.SOURCE_ZENDESK_TICKETS"
+      - "CAPIM_DATA.CAPIM_ANALYTICS.ZENDESK_TICKETS_RAW"
+      - "CAPIM_DATA.SOURCE_STAGING.SOURCE_ZENDESK_COMMENTS"
+    primary_key: zendesk_ticket_id
+    business_keys: [zendesk_ticket_id, clinic_id]
+    documentation:
+      semantic: "reference/TICKET_INSIGHTS_SEMANTIC.md"
+      agentic: "reference/TICKET_INSIGHTS.md"
+    
+    failure_modes:
+      - issue: "clinic_id only 35.6% filled (B2C tickets lack clinic attribution)"
+        severity: KNOWN_LIMITATION
+        workaround: "Use clinic_id_source to assess attribution quality"
+      
+      - issue: "is_claudinha_assigned is snapshot (assignee final), perde 76.9% dos bot-touched"
+        severity: KNOWN_LIMITATION
+        workaround: "Usar cloudhumans + transbordo_botweb tags como sinais de bot (see TICKET_INSIGHTS_SEMANTIC.md §3.2.1)"
+      
+      - issue: "workflow_type LEGACY (67.4% Indeterminado) — substituída pela taxonomia 3 eixos"
+        severity: DEPRECATED
+        workaround: "Usar product_area (L1), product_area_l2, root_cause, service_type (nova taxonomia)"
+      
+      - issue: "LLM columns (root_cause, sentiment, etc.) only populated for ~400 tickets (Phase 3 in progress)"
+        severity: KNOWN_LIMITATION
+        workaround: "Phase 3 will process 24.6K tickets, then backfill 171K"
+      
+      - issue: "Comments truncated to 500 chars each, only first 5 fetched"
+        severity: MINOR
+        workaround: "Query Snowflake SOURCE_ZENDESK_COMMENTS directly for full comments"
+      
+      - issue: "Historical data limited to 12 months (Feb 2025 - Feb 2026)"
+        severity: KNOWN_LIMITATION
+        workaround: "Query Snowflake for older tickets if needed"
+    
+    relationships:
+      - target: SAAS.CLINICS
+        type: BELONGS_TO
+        join: "ON ticket_insights.clinic_id = CLINICS.clinic_id"
+        cardinality: "N:1"
+        coverage: "35.6%"
+        notes: "Only B2B tickets have clinic_id"
+      
+      - target: FINTECH.CREDIT_SIMULATIONS
+        type: CORRELATES_WITH
+        join: "ON ticket_insights.clinic_id = cs.clinic_id AND cs.created_at BETWEEN ticket_created_at - INTERVAL '7 days' AND ticket_created_at + INTERVAL '1 day'"
+        cardinality: "N:M"
+        notes: "Fuzzy time-window join for correlation analysis (planned Phase 3)"
 
 # === CROSS-DOMAIN VIEWS (Conceptual) ===
 

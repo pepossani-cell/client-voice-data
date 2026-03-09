@@ -1,0 +1,217 @@
+# ENTITY_GRAPH.yaml
+# Client Voice Domain Entity Relationships
+# Reference: MEMORY_ARCHITECTURE_CONSTITUTION §DIRECTIVE:ONTOLOGY_FORMALIZATION
+# Last Updated: 2026-02-13
+
+domain_id: CLIENT_VOICE
+domain_name: "Customer Voice & Support Intelligence"
+
+# Relationship graph between entities in CLIENT_VOICE domain
+# and cross-domain relationships to SAAS/FINTECH
+
+relationships:
+
+  # === INTRA-DOMAIN RELATIONSHIPS ===
+
+  - name: "Tickets to Users (Requester)"
+    source_entity: ZENDESK_TICKETS
+    target_entity: ZENDESK_USERS
+    relationship_type: BELONGS_TO
+    cardinality: "N:1"
+    join_key: requester_id
+    description: "Each ticket has one requester (end-user or agent who created ticket)"
+    
+  - name: "Tickets to Users (Assignee)"
+    source_entity: ZENDESK_TICKETS
+    target_entity: ZENDESK_USERS
+    relationship_type: ASSIGNED_TO
+    cardinality: "N:1"
+    join_key: assignee_id
+    description: "Each ticket has zero or one assignee (support agent handling ticket)"
+    
+  - name: "Comments to Tickets"
+    source_entity: SOURCE_ZENDESK_COMMENTS
+    target_entity: ZENDESK_TICKETS
+    relationship_type: BELONGS_TO
+    cardinality: "N:1"
+    join_key: ticket_id
+    description: "Each comment belongs to one ticket (conversation thread)"
+    
+  - name: "Comments to Users (Author)"
+    source_entity: SOURCE_ZENDESK_COMMENTS
+    target_entity: ZENDESK_USERS
+    relationship_type: AUTHORED_BY
+    cardinality: "N:1"
+    join_key: comment_author_id
+    description: "Each comment has one author (user who posted comment)"
+    
+  - name: "Ticket Analysis to Tickets Enhanced (LEGACY)"
+    source_entity: TICKET_ANALYSIS
+    target_entity: ZENDESK_TICKETS_ENHANCED
+    relationship_type: ENRICHES
+    cardinality: "1:1"
+    join_key: ticket_id = zendesk_ticket_id
+    description: "LEGACY: LLM analysis enriches base ticket data (n8n Stage 1+2). Replaced by TICKET_INSIGHTS 3-axis taxonomy."
+    status: DEPRECATED
+    
+  - name: "Ticket Insights to Tickets Enhanced"
+    source_entity: TICKET_INSIGHTS
+    target_entity: ZENDESK_TICKETS_ENHANCED
+    relationship_type: DERIVED_FROM
+    cardinality: "1:1"
+    join_key: zendesk_ticket_id
+    description: "Ticket Insights consolidates Zendesk data with 3-axis taxonomy (Produto × Natureza × Atendimento) and LLM semantic extraction"
+    notes: "TICKET_INSIGHTS is PostgreSQL table (vox_popular), ZENDESK_TICKETS_ENHANCED is Snowflake view. Bot identification uses cloudhumans + transbordo_botweb tags + is_claudinha_assigned (4 layers)."
+    
+  - name: "Ticket Insights to Comments"
+    source_entity: TICKET_INSIGHTS
+    target_entity: SOURCE_ZENDESK_COMMENTS
+    relationship_type: AGGREGATES
+    cardinality: "1:N"
+    join_key: zendesk_ticket_id = ticket_id
+    description: "Ticket Insights aggregates up to 5 comments per ticket into full_conversation field"
+    notes: "ETL fetches first 5 comments ordered by created_at, truncates to 500 chars each"
+
+  # === CROSS-DOMAIN RELATIONSHIPS (SAAS) ===
+
+  - name: "Tickets to Clinics (SAAS)"
+    source_entity: ZENDESK_TICKETS
+    target_entity: SAAS.CLINICS
+    relationship_type: BELONGS_TO
+    cardinality: "N:1"
+    join_key: clinic_id
+    coverage: "46%"
+    description: "B2B tickets (clinic support) link to SAAS clinic dimension"
+    caveats:
+      - "Only 46% of tickets have clinic_id (B2C tickets lack clinic context)"
+      - "clinic_id sourced from ZENDESK_TICKETS_RAW (Data Eng enrichment)"
+    
+  - name: "Ticket Insights to Clinics (SAAS)"
+    source_entity: TICKET_INSIGHTS
+    target_entity: SAAS.CLINICS
+    relationship_type: BELONGS_TO
+    cardinality: "N:1"
+    join_key: clinic_id
+    coverage: "35.6%"
+    description: "B2B tickets in operational table link to SAAS clinic dimension"
+    caveats:
+      - "Only 35.6% of tickets have clinic_id (lower than source due to filtering)"
+      - "clinic_id_source field tracks attribution method (zendesk_raw, ticket_form, email_hash)"
+    use_cases:
+      - "Clinic health diagnostics (@clinic-health-check skill)"
+      - "Support health as leading indicator for operational issues"
+      - "Churn analysis (spike in BNPL_Cobranca tickets before churn?)"
+    
+  - name: "Ticket Analysis to Clinics (SAAS)"
+    source_entity: TICKET_ANALYSIS
+    target_entity: SAAS.CLINICS
+    relationship_type: BELONGS_TO
+    cardinality: "N:1"
+    join_key: clinic_id
+    description: "LLM-analyzed tickets link to SAAS clinic dimension"
+    
+  # === CROSS-DOMAIN RELATIONSHIPS (FINTECH) - PLANNED ===
+
+  - name: "Ticket Insights to Credit Simulations (FINTECH)"
+    source_entity: TICKET_INSIGHTS
+    target_entity: FINTECH.CREDIT_SIMULATIONS
+    relationship_type: CORRELATES_WITH
+    cardinality: "N:M"
+    join_type: FUZZY_TIME_WINDOW
+    join_logic: |
+      ON ticket_insights.clinic_id = CREDIT_SIMULATIONS.clinic_id
+      AND CREDIT_SIMULATIONS.created_at BETWEEN 
+          ticket_insights.ticket_created_at - INTERVAL '7 days'
+          AND ticket_insights.ticket_created_at + INTERVAL '1 day'
+    description: "Correlate BNPL_Cobranca tickets with credit events (rejection → ticket causality)"
+    status: PLANNED
+    phase: "Phase 3"
+    use_cases:
+      - "Root cause analysis: Did credit rejection trigger support ticket?"
+      - "Product gap detection: Common rejection reasons in ticket conversations"
+    
+  - name: "Ticket Insights to Credit Checks (FINTECH)"
+    source_entity: TICKET_INSIGHTS
+    target_entity: FINTECH.CREDIT_CHECKS
+    relationship_type: CORRELATES_WITH
+    cardinality: "N:M"
+    join_type: FUZZY_TIME_WINDOW
+    description: "Correlate debt collection tickets with bureau checks (credit score issues)"
+    status: PLANNED
+    phase: "Phase 3+"
+
+  # === OPERATIONAL RELATIONSHIPS ===
+
+  - name: "Processing Control to Ticket Analysis"
+    source_entity: PROCESSING_CONTROL
+    target_entity: TICKET_ANALYSIS
+    relationship_type: TRACKS
+    cardinality: "1:1"
+    join_key: record_id = ticket_id
+    description: "Control table tracks ETL status for each processed ticket"
+
+# === SEMANTIC NOTES ===
+
+notes:
+  - domain: CLIENT_VOICE
+    note: |
+      CLIENT_VOICE domain operates in a bifurcated model:
+      
+      1. **B2B tickets** (Clinics):
+         - Have clinic_id (35-46% of tickets depending on enrichment layer)
+         - Enable cross-domain correlation with SAAS/FINTECH
+         - Used for clinic health diagnostics
+      
+      2. **B2C tickets** (Patients):
+         - NO clinic_id (54-65% of tickets)
+         - Still valuable for product health, but isolated from clinic context
+         - Future: Phase 5 may improve attribution via LLM entity extraction
+      
+      This bifurcation affects join coverage and cardinality assumptions.
+  
+  - relationship: "Ticket Insights to Clinics"
+    note: |
+      The 35.6% coverage is ACCEPTABLE but not ideal. Key considerations:
+      
+      - **Why low?**: B2C tickets, incomplete Zendesk forms, email hashing gaps
+      - **Impact**: Limits clinic-level analytics scope
+      - **Workaround**: Use clinic_id_source field to filter by attribution quality
+      - **Future**: Phase 5 LLM entity extraction may improve to 60%+
+  
+  - cross_domain_joins: |
+      Cross-domain joins (CLIENT_VOICE ↔ SAAS/FINTECH) use FUZZY TIME WINDOWS
+      instead of exact FKs. This is because:
+      
+      1. Events propagate asynchronously across systems
+      2. Zendesk ticket creation may lag behind triggering event (user delay)
+      3. Time windows provide flexibility for causal analysis
+      
+      Typical time windows:
+      - BACKWARD: -7 days (event happened, then ticket created)
+      - FORWARD: +1 day (ticket created, then event logged)
+      
+      See: capim-meta-ontology/_ontology/INFERENCE_RULES.yaml (RULE-CROSS-002)
+
+# === GRAPH INVARIANTS ===
+
+invariants:
+  - name: "PK Uniqueness"
+    check: "Each entity's primary_key is unique and non-null"
+    
+  - name: "FK Integrity (Intra-Domain)"
+    check: "All intra-domain foreign keys must reference existing PKs"
+    exemptions:
+      - "SOURCE_ZENDESK_COMMENTS.comment_author_id may be NULL (system-generated comments)"
+    
+  - name: "FK Integrity (Cross-Domain)"
+    check: "Cross-domain foreign keys are ADVISORY only (no hard constraints)"
+    rationale: "Different databases (Snowflake vs PostgreSQL), data may drift"
+    
+  - name: "Temporal Consistency"
+    check: "ticket_created_at <= comment_created_at for all comments"
+    
+  - name: "Cardinality Bounds"
+    checks:
+      - "Each ticket has AT MOST one assignee (N:1)"
+      - "Each ticket has AT LEAST one requester (N:1, non-null)"
+      - "Each comment belongs to exactly one ticket (N:1, non-null)"
