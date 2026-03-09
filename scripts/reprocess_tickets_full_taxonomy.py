@@ -879,7 +879,7 @@ def main():
                         clinic_id=cid,
                         has_bnpl_contract=bool(row['HAS_SIGNED_CONTRACT']),
                         has_capim_pos=bool(row['HAS_CAPIM_POS']),
-                        current_subscription_status='active' if row['IS_SUBSCRIBER'] else ('churned' if row['WAS_SUBSCRIBER'] else 'never'),
+                        current_subscription_status='ativo' if row['IS_SUBSCRIBER'] else ('cancelado' if row['WAS_SUBSCRIBER'] else 'nunca_assinou'),
                     )
                 logger.info(f"[OK] Loaded {len(clinic_context)} clinic profiles for routing")
     except Exception as e:

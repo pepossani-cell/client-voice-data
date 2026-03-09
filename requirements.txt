@@ -1,0 +1,23 @@
+# =============================================================================
+# client-voice-data — Python Dependencies
+# =============================================================================
+# Install: pip install -r requirements.txt
+# =============================================================================
+
+# --- Data / Database ---
+snowflake-connector-python
+pandas
+pyarrow
+psycopg2-binary
+python-dotenv
+
+# --- LLM APIs ---
+anthropic
+openai
+
+# --- Data Validation ---
+pydantic
+PyYAML
+
+# --- Development ---
+jupyter
